@@ -289,6 +289,18 @@ async def websocket_endpoint(websocket: WebSocket, api_key: Optional[str] = Quer
             except asyncio.TimeoutError:
                 # Timeout is OK, just continue loop
                 continue
+            except RuntimeError as e:
+                # WebSocket disconnected while waiting for message
+                print(f"[WebSocket] ⚠️ RuntimeError in receive loop for {session_id}: {e}")
+                break
+            except WebSocketDisconnect:
+                # Client disconnected normally
+                print(f"[WebSocket] 🔌 Client {session_id} disconnected during receive")
+                break
+            except Exception as e:
+                # Any other error during receive
+                print(f"[WebSocket] ❌ Error receiving from {session_id}: {e}")
+                break
             
             msg_type = data.get('type')
             
