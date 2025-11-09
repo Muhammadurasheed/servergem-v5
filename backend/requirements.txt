@@ -1,0 +1,14 @@
+# FastAPI Backend for ServerGem (Production-Grade)
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+websockets==12.0
+
+# Google AI SDK (Latest)
+google-generativeai==0.8.3
+
+# HTTP Client & Async
+requests==2.32.3
+aiofiles==24.1.0
+
+# Environment & Config
+python-dotenv==1.0.1
