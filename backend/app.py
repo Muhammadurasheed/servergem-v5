@@ -53,9 +53,9 @@ active_connections: dict[str, dict] = {}
 
 # Initialize orchestrator
 orchestrator = OrchestratorAgent(
-    gemini_api_key=os.getenv('GEMINI_API_KEY'),
+    gcloud_project=os.getenv('GOOGLE_CLOUD_PROJECT'),
     github_token=os.getenv('GITHUB_TOKEN'),
-    gcloud_project=os.getenv('GOOGLE_CLOUD_PROJECT')
+    location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1')
 )
 
 
@@ -196,31 +196,16 @@ async def websocket_endpoint(websocket: WebSocket, api_key: Optional[str] = Quer
     keep_alive = None
     
     try:
-        # Get API key
-        if not user_api_key:
-            user_api_key = os.getenv('GEMINI_API_KEY')
+        # Vertex AI uses Google Cloud authentication - no API key needed
+        gcloud_project = os.getenv('GOOGLE_CLOUD_PROJECT')
+        gcloud_region = os.getenv('GOOGLE_CLOUD_REGION', 'us-central1')
         
-        if not user_api_key:
-            await websocket.close(code=1008, reason="API key required")
+        if not gcloud_project:
+            await websocket.close(code=1008, reason="Google Cloud project not configured")
             return
         
         await websocket.accept()
-        print(f"[WebSocket] ✅ Connection accepted")
-        
-        # Test API key
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=user_api_key)
-            print(f"[WebSocket] Using {'user-provided' if api_key else 'default'} API key")
-        except Exception as e:
-            await websocket.send_json({
-                'type': 'error',
-                'message': 'Invalid API key. Please check your Gemini API key.',
-                'code': 'INVALID_API_KEY',
-                'timestamp': datetime.now().isoformat()
-            })
-            await websocket.close(code=1008)
-            return
+        print(f"[WebSocket] ✅ Connection accepted (Using Vertex AI with project: {gcloud_project})")
         
         # Receive init message
         init_message = await asyncio.wait_for(
@@ -276,11 +261,11 @@ async def websocket_endpoint(websocket: WebSocket, api_key: Optional[str] = Quer
         
         print(f"[WebSocket] ✅ Session {session_id} registered. Active: {len(active_connections)}")
         
-        # Create orchestrator
+        # Create orchestrator using Vertex AI
         user_orchestrator = OrchestratorAgent(
-            gemini_api_key=user_api_key,
+            gcloud_project=gcloud_project,
             github_token=os.getenv('GITHUB_TOKEN'),
-            gcloud_project=os.getenv('GOOGLE_CLOUD_PROJECT')
+            location=gcloud_region
         )
         
         # Session env vars

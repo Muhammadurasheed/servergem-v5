@@ -4,18 +4,19 @@ Docker Expert Agent - Optimized Dockerfile generation
 
 from pathlib import Path
 from typing import Dict
-import google.generativeai as genai
+import vertexai
+from vertexai.generative_models import GenerativeModel
 
 
 class DockerExpertAgent:
     """
-    Generates production-optimized Dockerfiles using Gemini
+    Generates production-optimized Dockerfiles using Vertex AI Gemini
     and pre-built templates for common frameworks.
     """
     
-    def __init__(self, gemini_api_key: str):
-        genai.configure(api_key=gemini_api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+    def __init__(self, gcloud_project: str, location: str = 'us-central1'):
+        vertexai.init(project=gcloud_project, location=location)
+        self.model = GenerativeModel('gemini-2.0-flash-exp')
         self.templates = self._load_templates()
     
     def _load_templates(self) -> Dict[str, str]:
@@ -228,7 +229,8 @@ async def test_docker_expert():
     
     load_dotenv()
     
-    expert = DockerExpertAgent(gemini_api_key=os.getenv('GEMINI_API_KEY'))
+    gcloud_project = os.getenv('GOOGLE_CLOUD_PROJECT')
+    expert = DockerExpertAgent(gcloud_project=gcloud_project)
     
     mock_analysis = {
         'language': 'python',

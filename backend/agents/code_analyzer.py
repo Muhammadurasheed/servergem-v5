@@ -7,18 +7,19 @@ import json
 import re
 from pathlib import Path
 from typing import Dict, List, Optional
-import google.generativeai as genai
+import vertexai
+from vertexai.generative_models import GenerativeModel
 
 
 class CodeAnalyzerAgent:
     """
-    Analyzes codebases using Gemini for intelligent framework detection
+    Analyzes codebases using Vertex AI Gemini for intelligent framework detection
     and dependency analysis.
     """
     
-    def __init__(self, gemini_api_key: str):
-        genai.configure(api_key=gemini_api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+    def __init__(self, gcloud_project: str, location: str = 'us-central1'):
+        vertexai.init(project=gcloud_project, location=location)
+        self.model = GenerativeModel('gemini-2.0-flash-exp')
     
     async def analyze_project(self, project_path: str) -> Dict:
         """Analyze project structure and configuration"""
@@ -241,7 +242,8 @@ async def test_analyzer():
     
     load_dotenv()
     
-    analyzer = CodeAnalyzerAgent(gemini_api_key=os.getenv('GEMINI_API_KEY'))
+    gcloud_project = os.getenv('GOOGLE_CLOUD_PROJECT')
+    analyzer = CodeAnalyzerAgent(gcloud_project=gcloud_project)
     
     # Create mock Flask project
     temp_dir = tempfile.mkdtemp()

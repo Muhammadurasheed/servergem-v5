@@ -11,7 +11,8 @@ FAANG-Level Production Implementation
 import asyncio
 import time
 from typing import Dict, List, Optional, Any, Callable
-import google.generativeai as genai
+import vertexai
+from vertexai.generative_models import GenerativeModel, Tool, FunctionDeclaration, Part, GenerationConfig
 from datetime import datetime
 import json
 import uuid
@@ -40,14 +41,15 @@ class OrchestratorAgent:
     
     def __init__(
         self, 
-        gemini_api_key: str, 
-        github_token: Optional[str] = None, 
-        gcloud_project: Optional[str] = None
+        gcloud_project: str,
+        github_token: Optional[str] = None,
+        location: str = 'us-central1'
     ):
-        if not gemini_api_key:
-            raise ValueError("GEMINI_API_KEY is required")
+        if not gcloud_project:
+            raise ValueError("GOOGLE_CLOUD_PROJECT is required")
             
-        genai.configure(api_key=gemini_api_key)
+        # Initialize Vertex AI
+        vertexai.init(project=gcloud_project, location=location)
         
         # ServerGem-specific system instruction
         system_instruction = """
@@ -102,8 +104,8 @@ DEPLOYMENT FLOW:
 Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
         """.strip()
         
-        # Initialize Gemini with function declarations and system instruction
-        self.model = genai.GenerativeModel(
+        # Initialize Vertex AI Gemini with function declarations and system instruction
+        self.model = GenerativeModel(
             'gemini-2.0-flash-exp',
             tools=[self._get_function_declarations()],
             system_instruction=system_instruction
@@ -130,7 +132,7 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
                 gcloud_project or 'servergem-platform'
             ) if gcloud_project else None
             self.docker_service = DockerService()
-            self.analysis_service = AnalysisService(gemini_api_key)
+            self.analysis_service = AnalysisService(gcloud_project, location)
             
             # Production services
             self.monitoring = monitoring
@@ -161,80 +163,82 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
         self.optimization = MockService()
         self.create_progress_tracker = lambda *args, **kwargs: MockService()
     
-    def _get_function_declarations(self) -> List[genai.types.Tool]:
+    def _get_function_declarations(self) -> Tool:
         """
-        Define real functions available for Gemini ADK to call
-        Uses proper Google AI SDK format
+        Define real functions available for Vertex AI Gemini to call
+        Uses Vertex AI SDK format
         """
-        return [
-            genai.types.FunctionDeclaration(
-                name='clone_and_analyze_repo',
-                description='Clone a GitHub repository and perform comprehensive analysis to detect framework, dependencies, and deployment requirements. Use this when user provides a GitHub repo URL.',
-                parameters={
-                    'type': 'object',
-                    'properties': {
-                        'repo_url': {
-                            'type': 'string',
-                            'description': 'GitHub repository URL (https://github.com/user/repo or git@github.com:user/repo.git)'
+        return Tool(
+            function_declarations=[
+                FunctionDeclaration(
+                    name='clone_and_analyze_repo',
+                    description='Clone a GitHub repository and perform comprehensive analysis to detect framework, dependencies, and deployment requirements. Use this when user provides a GitHub repo URL.',
+                    parameters={
+                        'type': 'object',
+                        'properties': {
+                            'repo_url': {
+                                'type': 'string',
+                                'description': 'GitHub repository URL (https://github.com/user/repo or git@github.com:user/repo.git)'
+                            },
+                            'branch': {
+                                'type': 'string',
+                                'description': 'Branch name to clone and analyze (default: main)'
+                            }
                         },
-                        'branch': {
-                            'type': 'string',
-                            'description': 'Branch name to clone and analyze (default: main)'
-                        }
-                    },
-                    'required': ['repo_url']
-                }
-            ),
-            genai.types.FunctionDeclaration(
-                name='deploy_to_cloudrun',
-                description='Deploy an analyzed project to Google Cloud Run. Generates Dockerfile, builds image via Cloud Build, and deploys the service. Use this after analyzing a repository.',
-                parameters={
-                    'type': 'object',
-                    'properties': {
-                        'project_path': {
-                            'type': 'string',
-                            'description': 'Local path to the cloned project (from project_context)'
+                        'required': ['repo_url']
+                    }
+                ),
+                FunctionDeclaration(
+                    name='deploy_to_cloudrun',
+                    description='Deploy an analyzed project to Google Cloud Run. Generates Dockerfile, builds image via Cloud Build, and deploys the service. Use this after analyzing a repository.',
+                    parameters={
+                        'type': 'object',
+                        'properties': {
+                            'project_path': {
+                                'type': 'string',
+                                'description': 'Local path to the cloned project (from project_context)'
+                            },
+                            'service_name': {
+                                'type': 'string',
+                                'description': 'Name for the Cloud Run service (lowercase, hyphens allowed)'
+                            },
+                            'env_vars': {
+                                'type': 'object',
+                                'description': 'Environment variables as key-value pairs (optional)'
+                            }
                         },
-                        'service_name': {
-                            'type': 'string',
-                            'description': 'Name for the Cloud Run service (lowercase, hyphens allowed)'
+                        'required': ['project_path', 'service_name']
+                    }
+                ),
+                FunctionDeclaration(
+                    name='list_user_repositories',
+                    description='List GitHub repositories for the authenticated user. Use this when user asks to see their repos or wants to select a project to deploy.',
+                    parameters={
+                        'type': 'object',
+                        'properties': {},
+                        'required': []
+                    }
+                ),
+                FunctionDeclaration(
+                    name='get_deployment_logs',
+                    description='Fetch recent logs from a deployed Cloud Run service. Use this for debugging deployment issues or when user asks to see logs.',
+                    parameters={
+                        'type': 'object',
+                        'properties': {
+                            'service_name': {
+                                'type': 'string',
+                                'description': 'Cloud Run service name'
+                            },
+                            'limit': {
+                                'type': 'integer',
+                                'description': 'Number of log entries to fetch (default: 50)'
+                            }
                         },
-                        'env_vars': {
-                            'type': 'object',
-                            'description': 'Environment variables as key-value pairs (optional)'
-                        }
-                    },
-                    'required': ['project_path', 'service_name']
-                }
-            ),
-            genai.types.FunctionDeclaration(
-                name='list_user_repositories',
-                description='List GitHub repositories for the authenticated user. Use this when user asks to see their repos or wants to select a project to deploy.',
-                parameters={
-                    'type': 'object',
-                    'properties': {},
-                    'required': []
-                }
-            ),
-            genai.types.FunctionDeclaration(
-                name='get_deployment_logs',
-                description='Fetch recent logs from a deployed Cloud Run service. Use this for debugging deployment issues or when user asks to see logs.',
-                parameters={
-                    'type': 'object',
-                    'properties': {
-                        'service_name': {
-                            'type': 'string',
-                            'description': 'Cloud Run service name'
-                        },
-                        'limit': {
-                            'type': 'integer',
-                            'description': 'Number of log entries to fetch (default: 50)'
-                        }
-                    },
-                    'required': ['service_name']
-                }
-            )
-        ]
+                        'required': ['service_name']
+                    }
+                )
+            ]
+        )
     
     async def process_message(
         self, 
@@ -1105,19 +1109,19 @@ async def test_orchestrator():
     from dotenv import load_dotenv
     load_dotenv()
     
-    gemini_key = os.getenv('GEMINI_API_KEY')
-    github_token = os.getenv('GITHUB_TOKEN')
     gcloud_project = os.getenv('GOOGLE_CLOUD_PROJECT')
+    github_token = os.getenv('GITHUB_TOKEN')
+    gcloud_region = os.getenv('GOOGLE_CLOUD_REGION', 'us-central1')
     
-    if not gemini_key:
-        print("❌ GEMINI_API_KEY not found in environment")
+    if not gcloud_project:
+        print("❌ GOOGLE_CLOUD_PROJECT not found in environment")
         return
     
-    print("🚀 Initializing ServerGem Orchestrator...")
+    print("🚀 Initializing ServerGem Orchestrator with Vertex AI...")
     orchestrator = OrchestratorAgent(
-        gemini_api_key=gemini_key,
+        gcloud_project=gcloud_project,
         github_token=github_token,
-        gcloud_project=gcloud_project
+        location=gcloud_region
     )
     
     test_messages = [
@@ -1160,15 +1164,15 @@ async def test_function_calling():
     from dotenv import load_dotenv
     load_dotenv()
     
-    gemini_key = os.getenv('GEMINI_API_KEY')
-    if not gemini_key:
-        print("❌ GEMINI_API_KEY not found")
+    gcloud_project = os.getenv('GOOGLE_CLOUD_PROJECT')
+    if not gcloud_project:
+        print("❌ GOOGLE_CLOUD_PROJECT not found")
         return
     
     orchestrator = OrchestratorAgent(
-        gemini_api_key=gemini_key,
+        gcloud_project=gcloud_project,
         github_token=os.getenv('GITHUB_TOKEN'),
-        gcloud_project=os.getenv('GOOGLE_CLOUD_PROJECT')
+        location=os.getenv('GOOGLE_CLOUD_REGION', 'us-central1')
     )
     
     print("Testing message that should trigger function call...")

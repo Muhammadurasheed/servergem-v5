@@ -12,9 +12,9 @@ from agents.docker_expert import DockerExpertAgent
 class AnalysisService:
     """Orchestrates code analysis and Dockerfile generation"""
     
-    def __init__(self, gemini_api_key: str):
-        self.code_analyzer = CodeAnalyzerAgent(gemini_api_key)
-        self.docker_expert = DockerExpertAgent(gemini_api_key)
+    def __init__(self, gcloud_project: str, location: str = 'us-central1'):
+        self.code_analyzer = CodeAnalyzerAgent(gcloud_project, location)
+        self.docker_expert = DockerExpertAgent(gcloud_project, location)
     
     async def analyze_and_generate(self, project_path: str) -> Dict:
         """
