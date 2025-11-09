@@ -286,13 +286,13 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
                                 progress_callback=progress_callback
                             )
                             
-                            # Send function result back to Gemini (SDK 0.8.x format)
-                            final_response = self.chat_session.send_message({
-                                "function_response": {
-                                    "name": part.function_call.name,
-                                    "response": function_result
-                                }
-                            })
+                            # Send function result back to Gemini using Part.from_function_response
+                            final_response = self.chat_session.send_message(
+                                Part.from_function_response(
+                                    name=part.function_call.name,
+                                    response=function_result
+                                )
+                            )
                             
                             # Extract text from final response
                             response_text = self._extract_text_from_response(final_response)
