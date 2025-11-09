@@ -199,35 +199,46 @@ class GCloudService:
             # Stream output with enhanced progress tracking
             progress = 10
             logs = []
-            async for line in process.stdout:
-                line_str = line.decode().strip()
-                
-                # Skip empty lines
-                if not line_str:
-                    continue
-                
-                # Log to console
-                self.logger.debug(f"[CloudBuild] {line_str}")
-                logs.append(line_str)
-                
-                # Update progress based on build stages
-                if 'Fetching' in line_str or 'Pulling' in line_str:
-                    progress = min(progress + 2, 30)
-                elif 'Step' in line_str:
-                    progress = min(progress + 3, 70)
-                elif 'Pushing' in line_str:
-                    progress = min(progress + 5, 90)
-                elif 'DONE' in line_str or 'SUCCESS' in line_str:
-                    progress = 95
-                
-                if progress_callback:
-                    await progress_callback({
-                        'stage': 'build',
-                        'progress': progress,
-                        'message': line_str[:100],  # Truncate long lines
-                        'logs': logs[-10:]  # Send last 10 logs
-                    })
+            stderr_logs = []
             
+            # Collect both stdout and stderr
+            async def read_stdout():
+                async for line in process.stdout:
+                    line_str = line.decode().strip()
+                    if not line_str:
+                        continue
+                    
+                    self.logger.debug(f"[CloudBuild] {line_str}")
+                    logs.append(line_str)
+                    
+                    # Update progress based on build stages
+                    nonlocal progress
+                    if 'Fetching' in line_str or 'Pulling' in line_str:
+                        progress = min(progress + 2, 30)
+                    elif 'Step' in line_str:
+                        progress = min(progress + 3, 70)
+                    elif 'Pushing' in line_str:
+                        progress = min(progress + 5, 90)
+                    elif 'DONE' in line_str or 'SUCCESS' in line_str:
+                        progress = 95
+                    
+                    if progress_callback:
+                        await progress_callback({
+                            'stage': 'build',
+                            'progress': progress,
+                            'message': line_str[:100],
+                            'logs': logs[-10:]
+                        })
+            
+            async def read_stderr():
+                async for line in process.stderr:
+                    line_str = line.decode().strip()
+                    if line_str:
+                        self.logger.error(f"[CloudBuild ERROR] {line_str}")
+                        stderr_logs.append(line_str)
+            
+            # Read both streams concurrently
+            await asyncio.gather(read_stdout(), read_stderr())
             await process.wait()
             
             build_duration = time.time() - start_time
@@ -254,10 +265,17 @@ class GCloudService:
                 }
             else:
                 self.metrics['builds']['failed'] += 1
-                stderr = await process.stderr.read()
-                error_msg = stderr.decode()
-                self.logger.error(f"Build failed: {error_msg}")
-                raise Exception(f"Cloud Build failed: {error_msg}")
+                
+                # Combine stderr logs into error message
+                error_details = '\n'.join(stderr_logs) if stderr_logs else 'No error details available'
+                
+                self.logger.error(f"Build failed (exit code {process.returncode}): {error_details}")
+                
+                # Return detailed error
+                return {
+                    'success': False,
+                    'error': f'Cloud Build failed (exit code {process.returncode}):\n\n{error_details[:500]}'
+                }
                 
         except Exception as e:
             return {

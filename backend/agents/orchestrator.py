@@ -807,9 +807,10 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
             )
             
             build_duration = time.time() - build_start
-            self.monitoring.record_stage(deployment_id, 'build', 'success', build_duration)
             
+            # CRITICAL: Check build success BEFORE recording metrics
             if not build_result.get('success'):
+                self.monitoring.record_stage(deployment_id, 'build', 'failed', build_duration)
                 await tracker.emit_error(
                     'container_build', 
                     build_result.get('error', 'Build failed')
@@ -817,9 +818,12 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
                 self.monitoring.complete_deployment(deployment_id, 'failed')
                 return {
                     'type': 'error',
-                    'content': f"❌ **Build failed**\n\n{build_result.get('error')}\n\nCheck:\n• Dockerfile syntax\n• Cloud Build API is enabled\n• Billing is enabled",
+                    'content': f"❌ **Build failed**\n\n{build_result.get('error')}\n\nCheck:\n• Dockerfile syntax\n• Cloud Build API is enabled\n• Billing is enabled\n• gcloud CLI is authenticated",
                     'timestamp': datetime.now().isoformat()
                 }
+            
+            # Only record success if build actually succeeded
+            self.monitoring.record_stage(deployment_id, 'build', 'success', build_duration)
             
             # Emit build completion
             await tracker.complete_container_build(
@@ -855,9 +859,10 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
             )
             
             deploy_duration = time.time() - deploy_start
-            self.monitoring.record_stage(deployment_id, 'deploy', 'success', deploy_duration)
             
+            # CRITICAL: Check deployment success BEFORE recording metrics
             if not deploy_result.get('success'):
+                self.monitoring.record_stage(deployment_id, 'deploy', 'failed', deploy_duration)
                 await tracker.emit_error(
                     'cloud_deployment', 
                     deploy_result.get('error', 'Deployment failed')
@@ -865,9 +870,12 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
                 self.monitoring.complete_deployment(deployment_id, 'failed')
                 return {
                     'type': 'error',
-                    'content': f"❌ **Deployment failed**\n\n{deploy_result.get('error')}\n\nCheck:\n• Cloud Run API is enabled\n• Service account permissions",
+                    'content': f"❌ **Deployment failed**\n\n{deploy_result.get('error')}\n\nCheck:\n• Cloud Run API is enabled\n• Service account permissions\n• gcloud CLI is authenticated",
                     'timestamp': datetime.now().isoformat()
                 }
+            
+            # Only record success if deployment actually succeeded
+            self.monitoring.record_stage(deployment_id, 'deploy', 'success', deploy_duration)
             
             # Success! Complete deployment
             await tracker.complete_cloud_deployment(deploy_result['url'])
