@@ -36,10 +36,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       console.log('[WebSocketProvider] Connection status:', status.state);
       setConnectionStatus(status);
 
-      // Show reconnection toasts
-      if (status.state === 'connected' && status.reconnectAttempt && status.reconnectAttempt > 0) {
+      // Only show reconnection toasts after 2+ failed attempts (reduce spam)
+      if (status.state === 'connected' && status.reconnectAttempt && status.reconnectAttempt >= 2) {
         toast.success('✅ Reconnected to ServerGem', { duration: 2000 });
-      } else if (status.state === 'reconnecting') {
+      } else if (status.state === 'reconnecting' && status.reconnectAttempt && status.reconnectAttempt >= 3) {
         toast.loading('🔄 Reconnecting...', { duration: 1000 });
       }
     });

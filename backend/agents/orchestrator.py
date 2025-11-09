@@ -619,6 +619,15 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
         - Structured logging
         """
         
+        # CRITICAL: Use env_vars from project_context if not provided!
+        if not env_vars and 'env_vars' in self.project_context and self.project_context['env_vars']:
+            print(f"[Orchestrator] Using env_vars from project_context: {len(self.project_context['env_vars'])} vars")
+            # Convert format from {key: {value, isSecret}} to {key: value}
+            env_vars = {
+                key: val['value'] 
+                for key, val in self.project_context['env_vars'].items()
+            }
+        
         if not self.gcloud_service:
             return {
                 'type': 'error',
@@ -1057,6 +1066,13 @@ Showing last {min(20, len(logs))} entries (total: {len(logs)})
             context_parts.append(f"Deployed Service: {self.project_context['deployed_service']}")
         if 'project_path' in self.project_context:
             context_parts.append(f"Project Path: {self.project_context['project_path']}")
+        
+        # CRITICAL: Include env vars info so Gemini knows they're already provided!
+        if 'env_vars' in self.project_context and self.project_context['env_vars']:
+            env_count = len(self.project_context['env_vars'])
+            secret_count = sum(1 for v in self.project_context['env_vars'].values() if v.get('isSecret'))
+            context_parts.append(f"Environment Variables: {env_count} variables provided ({secret_count} secrets)")
+            context_parts.append("⚠️ IMPORTANT: Env vars are ALREADY stored - DO NOT ask user for them again!")
         
         return "Current project context: " + ", ".join(context_parts) if context_parts else ""
     

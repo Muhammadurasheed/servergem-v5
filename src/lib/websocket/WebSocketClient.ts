@@ -343,7 +343,7 @@ export class WebSocketClient {
   private startHeartbeat(): void {
     this.stopHeartbeat();
     
-    // More frequent heartbeat (every 15 seconds) for long-running deployments
+    // Heartbeat every 30 seconds for stability
     this.heartbeatTimer = setInterval(() => {
       if (this.isConnected()) {
         console.log('[WebSocket] 🏓 Sending heartbeat ping');
@@ -352,13 +352,14 @@ export class WebSocketClient {
           timestamp: new Date().toISOString(),
         });
         
-        // Longer timeout (30 seconds) for long-running operations like deployments
+        // 90 second timeout for long-running operations like deployments
+        // Backend may be busy building containers, analyzing code, etc.
         this.heartbeatTimeoutTimer = setTimeout(() => {
           console.warn('[WebSocket] ⚠️ Heartbeat timeout - no pong received, reconnecting...');
           this.ws?.close();
-        }, 30000); // 30 second timeout for pong
+        }, 90000); // 90 second timeout - be patient during deployments
       }
-    }, 15000); // Send ping every 15 seconds
+    }, 30000); // Send ping every 30 seconds
   }
   
   private stopHeartbeat(): void {
