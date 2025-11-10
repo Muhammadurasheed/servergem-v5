@@ -308,13 +308,19 @@ async def websocket_endpoint(websocket: WebSocket, api_key: Optional[str] = Quer
             print(f"[WebSocket] ♻️  Reusing existing orchestrator for {session_id}")
             print(f"[WebSocket] 📦 Context preserved: {list(user_orchestrator.project_context.keys())}")
         else:
+            # Extract Gemini API key from query params (from user's localStorage)
+            gemini_key = user_api_key  # This was extracted from query params earlier
+            
             user_orchestrator = OrchestratorAgent(
                 gcloud_project=gcloud_project,
                 github_token=os.getenv('GITHUB_TOKEN'),
-                location=gcloud_region
+                location=gcloud_region,
+                gemini_api_key=gemini_key  # Pass user's API key for fallback
             )
             session_orchestrators[session_id] = user_orchestrator
-            print(f"[WebSocket] ✨ Created new orchestrator for {session_id}")
+            
+            mode = "Vertex AI" if not gemini_key else "Gemini API (user key)"
+            print(f"[WebSocket] ✨ Created new orchestrator for {session_id} - Mode: {mode}")
         
         # Get or initialize session env vars from orchestrator context
         session_env_vars = user_orchestrator.project_context.get('env_vars', {})

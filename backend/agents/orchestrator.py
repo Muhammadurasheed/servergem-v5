@@ -43,109 +43,57 @@ class OrchestratorAgent:
         self, 
         gcloud_project: str,
         github_token: Optional[str] = None,
-        location: str = 'us-central1'
+        location: str = 'us-central1',
+        gemini_api_key: Optional[str] = None
     ):
-        if not gcloud_project:
-            raise ValueError("GOOGLE_CLOUD_PROJECT is required")
-            
-        # Initialize Vertex AI
-        vertexai.init(project=gcloud_project, location=location)
+        self.gemini_api_key = gemini_api_key
+        self.use_vertex_ai = not gemini_api_key  # Default to Vertex AI if no key provided
+        self.gcloud_project = gcloud_project
         
-        # ServerGem-specific system instruction
-        system_instruction = """
-You are ServerGem AI Assistant - a production-grade AI that deploys applications to Google Cloud Run using ServerGem's managed infrastructure.
+        if self.use_vertex_ai:
+            if not gcloud_project:
+                raise ValueError("GOOGLE_CLOUD_PROJECT is required for Vertex AI")
+            # Initialize Vertex AI
+            vertexai.init(project=gcloud_project, location=location)
+        else:
+            # Using Gemini API directly
+            import google.generativeai as genai
+            genai.configure(api_key=gemini_api_key)
+        
+        # OPTIMIZED system instruction (70% token reduction for quota efficiency)
+        system_instruction = """ServerGem AI - Deploy apps to Cloud Run via managed infrastructure.
 
-CRITICAL ARCHITECTURE PRINCIPLES:
-- Users do NOT need Google Cloud accounts or gcloud authentication
-- Users do NOT need to provide project IDs or service account keys
-- ServerGem handles ALL Google Cloud interactions using its own managed infrastructure
-- You deploy everything to ServerGem's platform and provide custom .servergem.app URLs
+CRITICAL RULES:
+- NO Google Cloud accounts/auth needed from users
+- ServerGem handles ALL GCP interactions
+- Provide .servergem.app URLs
 
-NEVER ask users for:
-❌ Google Cloud project IDs
-❌ Service account keys
-❌ gcloud CLI authentication commands
-❌ IAM permissions or roles
+STATE MACHINE:
+IF context has "Project Path:" → repo CLONED
+  → ONLY call deploy_to_cloudrun
+  → User says "deploy"|"yes"|"go" → IMMEDIATELY deploy
+IF NO "Project Path:" → call clone_and_analyze_repo
 
-ALWAYS ask for:
-✅ GitHub repository URL
-✅ Environment variables (if app needs them)
+ENV VARS: Auto-parsed from .env uploads. Never ask for JSON format.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🚨 CRITICAL STATE MACHINE - FOLLOW THIS LOGIC EXACTLY 🚨
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-BEFORE PROCESSING ANY MESSAGE, CHECK THE CONTEXT:
-
-IF context contains "Project Path:" (meaning repo is already cloned and analyzed):
-   STATE = DEPLOYMENT_READY
-   ALLOWED FUNCTIONS: deploy_to_cloudrun ONLY
-   FORBIDDEN FUNCTIONS: clone_and_analyze_repo (NEVER call this - repo is already cloned!)
-   
-   When user says ANY deployment-related word ("deploy", "yes", "go", "start", "ok", "proceed"):
-   → IMMEDIATELY call deploy_to_cloudrun
-   → DO NOT ask for repo URL
-   → DO NOT call clone_and_analyze_repo
-   → DO NOT ask what to deploy
-
-IF context does NOT contain "Project Path:":
-   STATE = INITIAL
-   ALLOWED FUNCTIONS: clone_and_analyze_repo, list_user_repositories
-   
-   Ask for GitHub repository URL if not provided
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔴 ABSOLUTE RULE: NEVER CLONE THE SAME REPO TWICE 🔴
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-If "Project Path:" exists in context → Repository is ALREADY cloned
-→ clone_and_analyze_repo function is DISABLED
-→ ONLY use deploy_to_cloudrun function
-→ NEVER ask for repo URL again
-
-ENVIRONMENT VARIABLES HANDLING:
-When the user uploads a .env file or provides environment variables:
-1. The system automatically parses and stores ALL key-value pairs
-2. You will receive a confirmation that env vars are stored
-3. NEVER ask the user to provide values again in JSON format
-4. The env vars are ALREADY in the system context
-5. Simply confirm receipt and ask if they want to deploy
-
-DEPLOYMENT TRIGGER WORDS:
-When user says ANY of these: "deploy", "yes", "go ahead", "start", "ok", "proceed", "continue"
-AND context contains "Project Path:"
-→ IMMEDIATELY call deploy_to_cloudrun(project_path=<from context>, service_name=<auto-generate>)
-
-EXAMPLE CORRECT FLOW:
-Context: "Project Path: /tmp/servergem_repos/ihealth_backend_20251109_224704"
-User: "deploy"
-You: [Call deploy_to_cloudrun with project_path from context]
-✅ CORRECT!
-
-EXAMPLE WRONG FLOW (NEVER DO THIS):
-Context: "Project Path: /tmp/servergem_repos/ihealth_backend_20251109_224704"
-User: "deploy"
-You: [Call clone_and_analyze_repo]
-❌ WRONG! Repository is already cloned! Should call deploy_to_cloudrun!
-User: "deploy"
-You: "Okay, I'm ready to deploy. I need the GitHub repository URL to get started." ❌ WRONG!
-
-DEPLOYMENT FLOW:
-1. User provides GitHub repo URL
-2. You call clone_and_analyze_repo function
-3. You generate optimal Dockerfile
-4. You deploy to ServerGem's Cloud Run infrastructure
-5. You provide custom URL: https://{service-name}.servergem.app
-
-Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
+NEVER clone repo twice. Never ask for GCP credentials.
         """.strip()
         
-        # Initialize Vertex AI Gemini with function declarations and system instruction
-        self.model = GenerativeModel(
-            'gemini-2.0-flash-exp',
-            tools=[self._get_function_declarations()],
-            system_instruction=system_instruction
-        )
+        # Initialize AI model (Vertex AI or Gemini API)
+        if self.use_vertex_ai:
+            self.model = GenerativeModel(
+                'gemini-2.0-flash-exp',
+                tools=[self._get_function_declarations()],
+                system_instruction=system_instruction
+            )
+        else:
+            # Gemini API model
+            import google.generativeai as genai
+            self.model = genai.GenerativeModel(
+                'gemini-1.5-flash',
+                tools=[self._get_function_declarations_genai()],
+                system_instruction=system_instruction
+            )
         
         self.conversation_history: List[Dict] = []
         self.project_context: Dict[str, Any] = {}
@@ -198,6 +146,13 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
         self.security = MockService()
         self.optimization = MockService()
         self.create_progress_tracker = lambda *args, **kwargs: MockService()
+    
+    def _get_function_declarations_genai(self):
+        """
+        Get function declarations for Gemini API (google-generativeai format)
+        """
+        from agents.gemini_tools import get_gemini_api_tools
+        return get_gemini_api_tools()
     
     def _get_function_declarations(self) -> Tool:
         """
@@ -302,6 +257,60 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
         
         raise Exception("Max retries exceeded for network operation")
 
+    async def _send_with_fallback(self, message: str):
+        """
+        Send message with automatic fallback: Vertex AI → Gemini API on quota exhaustion
+        """
+        try:
+            # Try primary method (Vertex AI or Gemini API based on initialization)
+            return await self._retry_with_backoff(
+                lambda: self.chat_session.send_message(message),
+                max_retries=2,
+                base_delay=1.0
+            )
+        except Exception as e:
+            error_str = str(e).lower()
+            
+            # Check for quota/rate limit errors (429)
+            is_quota_error = any(keyword in error_str for keyword in [
+                'resource exhausted', '429', 'quota', 'rate limit'
+            ])
+            
+            if is_quota_error and self.use_vertex_ai and self.gemini_api_key:
+                # Switch to Gemini API fallback
+                print(f"[Orchestrator] ⚠️ Vertex AI quota exhausted, falling back to Gemini API")
+                await self._send_progress_message("⚠️ Switching to backup AI service...")
+                
+                try:
+                    import google.generativeai as genai
+                    genai.configure(api_key=self.gemini_api_key)
+                    
+                    # Create new Gemini API model
+                    backup_model = genai.GenerativeModel(
+                        'gemini-1.5-flash',
+                        tools=[self._get_function_declarations_genai()],
+                        system_instruction=self.model._system_instruction if hasattr(self.model, '_system_instruction') else None
+                    )
+                    
+                    # Create new chat session with backup model
+                    backup_chat = backup_model.start_chat(history=[])
+                    response = backup_chat.send_message(message)
+                    
+                    # Switch permanently to Gemini API
+                    self.use_vertex_ai = False
+                    self.model = backup_model
+                    self.chat_session = backup_chat
+                    
+                    await self._send_progress_message("✅ Switched to Gemini API successfully")
+                    return response
+                    
+                except Exception as fallback_err:
+                    print(f"[Orchestrator] ❌ Fallback to Gemini API failed: {fallback_err}")
+                    raise Exception(f"Both Vertex AI and Gemini API failed. Add API key in Settings.")
+            
+            # Re-raise if not quota error or no fallback available
+            raise
+
     async def process_message(
         self, 
         user_message: str, 
@@ -343,12 +352,8 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
             )
         
         try:
-            # Send to Gemini with function calling enabled - with retry logic
-            response = await self._retry_with_backoff(
-                lambda: self.chat_session.send_message(enhanced_message),
-                max_retries=3,
-                base_delay=2.0
-            )
+            # Send to Gemini with function calling enabled - with retry logic and fallback
+            response = await self._send_with_fallback(enhanced_message)
         
             # Check if Gemini wants to call a function
             if hasattr(response, 'candidates') and response.candidates:
