@@ -83,10 +83,10 @@ Env vars auto-parsed from .env. Never clone twice.
                 system_instruction=system_instruction
             )
         else:
-            # Gemini API model - using latest Flash model
+            # Gemini API model - using stable Flash model (2.0 not available in direct API)
             import google.generativeai as genai
             self.model = genai.GenerativeModel(
-                'gemini-2.0-flash-exp',
+                'gemini-1.5-flash',  # ✅ FIXED: Use 1.5-flash for direct Gemini API
                 tools=[self._get_function_declarations_genai()],
                 system_instruction=system_instruction
             )

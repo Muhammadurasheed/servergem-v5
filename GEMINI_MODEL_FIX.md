@@ -8,8 +8,9 @@
 **Root Cause:** Incorrect model name for direct Gemini API
 
 **Solution:** 
-- ✅ Primary model: `gemini-2.0-flash-exp` (latest, fastest)
-- ✅ Fallback model: `gemini-1.5-flash` (stable, supports function calling)
+- ✅ Vertex AI: `gemini-2.0-flash-exp` (latest, fastest - only for Vertex)
+- ✅ Gemini API: `gemini-1.5-flash` (stable, supports function calling - for direct API)
+- ⚠️ **Critical**: `gemini-2.0-flash-exp` is NOT available in direct Gemini API
 
 ### 2. **Quota Optimization - 70%+ Token Reduction**
 
@@ -49,10 +50,10 @@ Env vars auto-parsed from .env. Never clone twice.
 #### 2. Fixed Gemini API Model (Lines 89-96)
 ```python
 else:
-    # Gemini API model - using latest Flash model
+    # Gemini API model - using stable Flash model (2.0 not available in direct API)
     import google.generativeai as genai
     self.model = genai.GenerativeModel(
-        'gemini-2.0-flash-exp',  # ✅ FIXED: Latest Flash
+        'gemini-1.5-flash',  # ✅ FIXED: Use 1.5-flash for direct Gemini API
         tools=[self._get_function_declarations_genai()],
         system_instruction=system_instruction
     )
@@ -174,9 +175,9 @@ python app.py
 
 | Model | Speed | Cost | Function Calling | Best For |
 |-------|-------|------|------------------|----------|
-| `gemini-2.0-flash-exp` | ⚡⚡⚡ Fastest | 💰 Cheapest | ✅ Yes | Primary Vertex AI |
-| `gemini-1.5-flash` | ⚡⚡ Fast | 💰 Cheap | ✅ Yes | Fallback API |
-| `gemini-1.5-pro` | ⚡ Slower | 💰💰 Expensive | ✅ Yes | ❌ Not needed |
+| `gemini-2.0-flash-exp` | ⚡⚡⚡ Fastest | 💰 Cheapest | ✅ Yes | ✅ Vertex AI ONLY |
+| `gemini-1.5-flash` | ⚡⚡ Fast | 💰 Cheap | ✅ Yes | ✅ Gemini API (direct) |
+| `gemini-1.5-pro` | ⚡ Slower | 💰💰 Expensive | ✅ Yes | 🔄 Optional upgrade |
 
 ---
 
