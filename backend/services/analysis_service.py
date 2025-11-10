@@ -16,9 +16,9 @@ class AnalysisService:
         self.code_analyzer = CodeAnalyzerAgent(gcloud_project, location)
         self.docker_expert = DockerExpertAgent(gcloud_project, location)
     
-    async def analyze_and_generate(self, project_path: str) -> Dict:
+    async def analyze_and_generate(self, project_path: str, progress_callback=None) -> Dict:
         """
-        Full analysis workflow:
+        Full analysis workflow with real-time progress updates:
         1. Analyze codebase
         2. Generate Dockerfile
         3. Return comprehensive report
@@ -26,7 +26,13 @@ class AnalysisService:
         try:
             # Step 1: Analyze project
             print(f"[AnalysisService] Analyzing project at {project_path}")
+            if progress_callback:
+                await progress_callback("🔍 Scanning project structure...")
+            
             analysis = await self.code_analyzer.analyze_project(project_path)
+            
+            if progress_callback:
+                await progress_callback(f"📦 Detected {analysis.get('framework', 'application')} framework...")
             
             if 'error' in analysis:
                 return {
@@ -36,7 +42,13 @@ class AnalysisService:
             
             # Step 2: Generate Dockerfile
             print(f"[AnalysisService] Generating Dockerfile for {analysis['framework']}")
+            if progress_callback:
+                await progress_callback(f"🐳 Generating optimized Dockerfile for {analysis['framework']}...")
+            
             dockerfile_result = await self.docker_expert.generate_dockerfile(analysis)
+            
+            if progress_callback:
+                await progress_callback("✅ Dockerfile generated successfully!")
             
             # Step 3: Compile report
             report = {

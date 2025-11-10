@@ -198,11 +198,32 @@ export const useChat = (): UseChatReturn => {
         console.log('[useChat] Setting typing to false, adding message');
         setIsTyping(false);
         
-        addAssistantMessage({
-          content: serverMessage.data.content,
-          actions: serverMessage.data.actions,
-          metadata: serverMessage.data.metadata,
-        });
+        const msgData = serverMessage.data as any;
+        
+        // Check if this is an analysis response requesting env vars
+        if (msgData?.request_env_vars) {
+          console.log('[useChat] Analysis complete, requesting env vars...');
+          
+          addAssistantMessage({
+            content: msgData.content,
+            metadata: { 
+              type: 'analysis_with_env_request',
+              detected_env_vars: msgData.detected_env_vars || []
+            }
+          });
+          
+          // Trigger env vars UI by sending a special metadata flag
+          sonnerToast.info('Environment Variables Required', {
+            description: 'Please provide your environment variables to continue.',
+            duration: 5000,
+          });
+        } else {
+          addAssistantMessage({
+            content: msgData.content,
+            actions: msgData.actions,
+            metadata: msgData.metadata,
+          });
+        }
         break;
         
       case 'analysis':

@@ -471,15 +471,27 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
                     }
                 )
             
-            # Step 2: Analyze project using AnalysisService
+            # Step 2: Analyze project using AnalysisService with real-time updates
             if progress_notifier:
                 await progress_notifier.start_stage(
                     DeploymentStages.CODE_ANALYSIS,
                     "🔍 Analyzing project structure and dependencies..."
                 )
             
+            # Create callback for real-time progress during analysis
+            async def analysis_progress(message: str):
+                if progress_notifier:
+                    await progress_notifier.send_update(
+                        DeploymentStages.CODE_ANALYSIS,
+                        "in-progress",
+                        message
+                    )
+            
             try:
-                analysis_result = await self.analysis_service.analyze_and_generate(project_path)
+                analysis_result = await self.analysis_service.analyze_and_generate(
+                    project_path,
+                    progress_callback=analysis_progress
+                )
             except Exception as e:
                 error_msg = str(e)
                 # Check if it's a quota error
@@ -553,6 +565,7 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
             self.project_context['analysis'] = analysis_result['analysis']
             self.project_context['framework'] = analysis_result['analysis']['framework']
             self.project_context['language'] = analysis_result['analysis']['language']
+            self.project_context['env_vars_required'] = len(analysis_result['analysis'].get('env_vars', [])) > 0
             
             # Format beautiful response
             content = self._format_analysis_response(
@@ -561,32 +574,45 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
                 repo_url
             )
             
-            return {
-                'type': 'analysis',
-                'content': content,
-                'data': analysis_result,
-                'actions': [
-                    {
-                        'id': 'deploy',
-                        'label': '🚀 Deploy to Cloud Run',
-                        'type': 'button',
-                        'action': 'deploy'
-                    },
-                    {
-                        'id': 'view_dockerfile',
-                        'label': '📄 View Dockerfile',
-                        'type': 'button',
-                        'action': 'view_dockerfile'
-                    },
-                    {
-                        'id': 'configure_env',
-                        'label': '⚙️ Configure Env Vars',
-                        'type': 'button',
-                        'action': 'configure_env'
-                    }
-                ],
-                'timestamp': datetime.now().isoformat()
-            }
+            # CHECK IF ENV VARS ARE NEEDED
+            env_vars_detected = analysis_result['analysis'].get('env_vars', [])
+            needs_env_vars = len(env_vars_detected) > 0
+            
+            if needs_env_vars:
+                # Add env vars section to response
+                content += f"\n\n⚙️ **Environment Variables Detected:** {len(env_vars_detected)}\n"
+                content += "\nYour application requires environment variables. Please provide them to continue with deployment."
+                
+                return {
+                    'type': 'analysis',
+                    'content': content,
+                    'data': analysis_result,
+                    'request_env_vars': True,  # Signal to frontend to show env vars UI
+                    'detected_env_vars': env_vars_detected,
+                    'timestamp': datetime.now().isoformat()
+                }
+            else:
+                # No env vars needed, ready to deploy
+                return {
+                    'type': 'analysis',
+                    'content': content,
+                    'data': analysis_result,
+                    'actions': [
+                        {
+                            'id': 'deploy',
+                            'label': '🚀 Deploy to Cloud Run',
+                            'type': 'button',
+                            'action': 'deploy'
+                        },
+                        {
+                            'id': 'view_dockerfile',
+                            'label': '📄 View Dockerfile',
+                            'type': 'button',
+                            'action': 'view_dockerfile'
+                        }
+                    ],
+                    'timestamp': datetime.now().isoformat()
+                }
             
         except Exception as e:
             print(f"[Orchestrator] Clone and analyze error: {str(e)}")
@@ -663,12 +689,23 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
         # CRITICAL: Use project_path from context if not provided
         if not project_path and 'project_path' in self.project_context:
             project_path = self.project_context['project_path']
-            print(f"[Orchestrator] Using project_path from context: {project_path}")
+            # Normalize path to fix Windows paths
+            project_path = project_path.replace('\\', '/').replace('//', '/')
+            print(f"[Orchestrator] Using project_path from context (normalized): {project_path}")
         
         if not project_path:
             return {
                 'type': 'error',
                 'content': '❌ **No repository analyzed yet**\n\nPlease provide a GitHub repository URL first.',
+                'timestamp': datetime.now().isoformat()
+            }
+        
+        # Verify project path exists
+        import os
+        if not os.path.exists(project_path):
+            return {
+                'type': 'error',
+                'content': f'❌ **Project path not found**: {project_path}\n\nThe cloned repository may have been cleaned up. Please clone and analyze the repository again.',
                 'timestamp': datetime.now().isoformat()
             }
         

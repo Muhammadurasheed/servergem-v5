@@ -149,18 +149,31 @@ class GCloudService:
         self.metrics['builds']['total'] += 1
         
         try:
+            # Normalize path for cross-platform compatibility
+            from pathlib import Path
+            project_path = str(Path(project_path).resolve())
+            
             self.logger.info(f"Starting build for: {image_name}")
+            self.logger.info(f"Project path (normalized): {project_path}")
             
             # Validate project path
             if not Path(project_path).exists():
-                raise FileNotFoundError(f"Project path not found: {project_path}")
+                return {
+                    'success': False,
+                    'error': f"Project path not found: {project_path}"
+                }
             
             dockerfile_path = Path(project_path) / 'Dockerfile'
             if not dockerfile_path.exists():
-                raise FileNotFoundError(f"Dockerfile not found in: {project_path}")
+                return {
+                    'success': False,
+                    'error': f"Dockerfile not found in: {project_path}"
+                }
+            
             image_tag = f'{self.artifact_registry}/{self.project_id}/servergem/{image_name}:latest'
             
             self.logger.info(f"Building image: {image_tag}")
+            self.logger.info(f"Dockerfile exists: {dockerfile_path}")
             
             if progress_callback:
                 await progress_callback({

@@ -22,14 +22,16 @@ const ChatMessageComponent = ({ message, onEnvSubmit, sendStructuredMessage }: C
   // Check if message is requesting environment variables
   // BUT NOT if it's a confirmation message (already received env vars)
   const requestsEnvVars = !isUser && (
-    message.content.toLowerCase().includes('environment variable') ||
+    message.metadata?.type === 'analysis_with_env_request' ||
+    (message.content.toLowerCase().includes('environment variable') ||
     message.content.toLowerCase().includes('.env file') ||
-    message.content.toLowerCase().includes('provide the environment')
+    message.content.toLowerCase().includes('provide the environment'))
   ) && !(
     // Don't show upload UI if message is confirming receipt of env vars
     message.content.toLowerCase().includes('received your environment') ||
+    message.content.toLowerCase().includes('configuration received successfully') ||
     message.content.toLowerCase().includes('perfect') ||
-    message.content.toLowerCase().includes('✅')
+    message.content.toLowerCase().includes('✅ configuration')
   );
 
   return (
