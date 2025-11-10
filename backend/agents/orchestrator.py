@@ -87,10 +87,10 @@ NEVER clone repo twice. Never ask for GCP credentials.
                 system_instruction=system_instruction
             )
         else:
-            # Gemini API model
+            # Gemini API model (use gemini-1.5-pro for stability)
             import google.generativeai as genai
             self.model = genai.GenerativeModel(
-                'gemini-1.5-flash',
+                'gemini-1.5-pro',
                 tools=[self._get_function_declarations_genai()],
                 system_instruction=system_instruction
             )
@@ -285,9 +285,9 @@ NEVER clone repo twice. Never ask for GCP credentials.
                     import google.generativeai as genai
                     genai.configure(api_key=self.gemini_api_key)
                     
-                    # Create new Gemini API model
+                    # Create new Gemini API model (use gemini-1.5-pro for stability)
                     backup_model = genai.GenerativeModel(
-                        'gemini-1.5-flash',
+                        'gemini-1.5-pro',
                         tools=[self._get_function_declarations_genai()],
                         system_instruction=self.model._system_instruction if hasattr(self.model, '_system_instruction') else None
                     )
