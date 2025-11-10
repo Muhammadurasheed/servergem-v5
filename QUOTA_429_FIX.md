@@ -18,7 +18,7 @@ Changed the orchestrator to use the correct model for each service:
 | Service | Model | Availability |
 |---------|-------|--------------|
 | **Vertex AI** | `gemini-2.0-flash-exp` | ✅ Available (needs GCP project) |
-| **Gemini API** | `gemini-1.5-flash` | ✅ Available (free tier: 60 req/min) |
+| **Gemini API** | `gemini-pro` | ✅ Available (v1beta API - stable, function calling) |
 
 ## 🚀 What to Do Now
 
@@ -67,8 +67,8 @@ self.model = genai.GenerativeModel('gemini-2.0-flash-exp')  # ❌ Doesn't exist!
 
 **After (Fixed):**
 ```python
-# When user provides Gemini API key
-self.model = genai.GenerativeModel('gemini-1.5-flash')  # ✅ Exists in API!
+# When user provides Gemini API key (v1beta API)
+self.model = genai.GenerativeModel('gemini-pro')  # ✅ Exists in v1beta API!
 ```
 
 ## 🎉 Benefits Now
@@ -77,7 +77,7 @@ With your Gemini API key + correct model:
 - ✅ **60 requests per minute** (vs Vertex AI's limited daily quota)
 - ✅ **Free tier** - plenty for testing
 - ✅ **No GCP billing** required
-- ✅ **Fast and reliable** - gemini-1.5-flash is battle-tested
+- ✅ **Stable and reliable** - gemini-pro is battle-tested for v1beta API
 
 ---
 

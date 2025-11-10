@@ -83,10 +83,10 @@ Env vars auto-parsed from .env. Never clone twice.
                 system_instruction=system_instruction
             )
         else:
-            # Gemini API model - using stable Flash model (2.0 not available in direct API)
+            # Gemini API model - v1beta API only supports older model names
             import google.generativeai as genai
             self.model = genai.GenerativeModel(
-                'gemini-1.5-flash',  # ✅ FIXED: Use 1.5-flash for direct Gemini API
+                'gemini-pro',  # ✅ FIXED: Use gemini-pro for v1beta API
                 tools=[self._get_function_declarations_genai()],
                 system_instruction=system_instruction
             )
@@ -281,9 +281,9 @@ Env vars auto-parsed from .env. Never clone twice.
                     import google.generativeai as genai
                     genai.configure(api_key=self.gemini_api_key)
                     
-                    # Create backup Gemini API model - using fast, stable Flash
+                    # Create backup Gemini API model - v1beta API only supports gemini-pro
                     backup_model = genai.GenerativeModel(
-                        'gemini-1.5-flash',
+                        'gemini-pro',  # ✅ FIXED: Use gemini-pro for v1beta API
                         tools=[self._get_function_declarations_genai()],
                         system_instruction=self.model._system_instruction if hasattr(self.model, '_system_instruction') else None
                     )
