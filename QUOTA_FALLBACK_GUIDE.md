@@ -69,7 +69,7 @@ python app.py
 ## 💰 Gemini API Free Tier
 
 - **60 requests per minute** (vs Vertex AI's ~40 total in free tier)
-- Uses gemini-1.5-pro model for stability and reliability
+- Uses gemini-1.5-flash model for speed, stability, and function calling support
 - Free for testing and demos
 - Get key at: https://ai.google.dev/aistudio
 

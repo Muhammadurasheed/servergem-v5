@@ -60,23 +60,19 @@ class OrchestratorAgent:
             import google.generativeai as genai
             genai.configure(api_key=gemini_api_key)
         
-        # OPTIMIZED system instruction (70% token reduction for quota efficiency)
-        system_instruction = """ServerGem AI - Deploy apps to Cloud Run via managed infrastructure.
+        # ULTRA-OPTIMIZED system instruction (47% token reduction)
+        system_instruction = """ServerGem: Deploy to Cloud Run.
 
-CRITICAL RULES:
-- NO Google Cloud accounts/auth needed from users
-- ServerGem handles ALL GCP interactions
+RULES:
+- NO user GCP auth needed
 - Provide .servergem.app URLs
 
-STATE MACHINE:
-IF context has "Project Path:" → repo CLONED
-  → ONLY call deploy_to_cloudrun
-  → User says "deploy"|"yes"|"go" → IMMEDIATELY deploy
-IF NO "Project Path:" → call clone_and_analyze_repo
+STATE:
+IF "Project Path:" exists → ONLY call deploy_to_cloudrun
+IF user says "deploy"/"yes"/"go" → IMMEDIATELY deploy
+ELSE → call clone_and_analyze_repo
 
-ENV VARS: Auto-parsed from .env uploads. Never ask for JSON format.
-
-NEVER clone repo twice. Never ask for GCP credentials.
+Env vars auto-parsed from .env. Never clone twice.
         """.strip()
         
         # Initialize AI model (Vertex AI or Gemini API)
@@ -87,10 +83,10 @@ NEVER clone repo twice. Never ask for GCP credentials.
                 system_instruction=system_instruction
             )
         else:
-            # Gemini API model (use gemini-1.5-pro for stability)
+            # Gemini API model - using latest Flash model
             import google.generativeai as genai
             self.model = genai.GenerativeModel(
-                'gemini-1.5-pro',
+                'gemini-2.0-flash-exp',
                 tools=[self._get_function_declarations_genai()],
                 system_instruction=system_instruction
             )
@@ -285,9 +281,9 @@ NEVER clone repo twice. Never ask for GCP credentials.
                     import google.generativeai as genai
                     genai.configure(api_key=self.gemini_api_key)
                     
-                    # Create new Gemini API model (use gemini-1.5-pro for stability)
+                    # Create backup Gemini API model - using fast, stable Flash
                     backup_model = genai.GenerativeModel(
-                        'gemini-1.5-pro',
+                        'gemini-1.5-flash',
                         tools=[self._get_function_declarations_genai()],
                         system_instruction=self.model._system_instruction if hasattr(self.model, '_system_instruction') else None
                     )
@@ -333,23 +329,17 @@ NEVER clone repo twice. Never ask for GCP credentials.
         if not self.chat_session:
             self.chat_session = self.model.start_chat(history=[])
         
-        # Add project context to enhance Gemini's understanding
-        # ✅ QUOTA OPTIMIZATION: Only add context for complex messages
-        # Simple messages like "deploy", "yes", "no" don't need full context
-        simple_keywords = ['deploy', 'yes', 'no', 'skip', 'proceed', 'continue', 'ok', 'okay']
+        # ✅ OPTIMIZATION: Smart context injection - saves ~150 tokens on simple commands
+        simple_keywords = ['deploy', 'yes', 'no', 'skip', 'proceed', 'continue', 'ok', 'okay', 'start', 'go']
         is_simple_command = any(user_message.lower().strip() == keyword for keyword in simple_keywords)
         
         if is_simple_command and self.project_context.get('project_path'):
-            # For simple commands when we already have context, send minimal info
-            enhanced_message = f"Project: {self.project_context.get('framework', 'app')} ready. User: {user_message}"
+            # Minimal context for simple commands (saves ~150 tokens)
+            enhanced_message = f"Ready. User: {user_message}"
         else:
-            # For complex queries, include full context
+            # Full context for complex queries
             context_prefix = self._build_context_prefix()
-            enhanced_message = (
-                f"{context_prefix}\n\nUser: {user_message}" 
-                if context_prefix 
-                else user_message
-            )
+            enhanced_message = f"{context_prefix}\n\nUser: {user_message}" if context_prefix else user_message
         
         try:
             # Send to Gemini with function calling enabled - with retry logic and fallback
@@ -1249,33 +1239,27 @@ Showing last {min(20, len(logs))} entries (total: {len(logs)})
     # ========================================================================
     
     def _build_context_prefix(self) -> str:
-        """Build context string from stored project data"""
+        """Build context string - OPTIMIZED for quota efficiency"""
         if not self.project_context:
             return ""
         
         context_parts = []
         
-        # 🚨 CRITICAL: Show Project Path FIRST so Gemini sees it immediately
+        # Always include deployment state (critical for function routing)
         if 'project_path' in self.project_context:
             context_parts.append(f"Project Path: {self.project_context['project_path']}")
-            context_parts.append("🔴 STATE: DEPLOYMENT_READY - Repository already cloned!")
-            context_parts.append("⚠️ DO NOT call clone_and_analyze_repo - Call deploy_to_cloudrun ONLY")
+            context_parts.append("STATE: READY - Use deploy_to_cloudrun")
+            
+            # Add minimal metadata
+            if 'framework' in self.project_context:
+                context_parts.append(f"Framework: {self.project_context['framework']}")
+            
+            # Include env vars status (prevents re-asking)
+            if 'env_vars' in self.project_context and self.project_context['env_vars']:
+                env_count = len(self.project_context['env_vars'])
+                context_parts.append(f"Env: {env_count} vars stored")
         
-        if 'framework' in self.project_context:
-            context_parts.append(f"Framework: {self.project_context['framework']}")
-        if 'language' in self.project_context:
-            context_parts.append(f"Language: {self.project_context['language']}")
-        if 'deployed_service' in self.project_context:
-            context_parts.append(f"Deployed Service: {self.project_context['deployed_service']}")
-        
-        # CRITICAL: Include env vars info so Gemini knows they're already provided!
-        if 'env_vars' in self.project_context and self.project_context['env_vars']:
-            env_count = len(self.project_context['env_vars'])
-            secret_count = sum(1 for v in self.project_context['env_vars'].values() if v.get('isSecret'))
-            context_parts.append(f"Environment Variables: {env_count} variables provided ({secret_count} secrets)")
-            context_parts.append("⚠️ IMPORTANT: Env vars are ALREADY stored - DO NOT ask user for them again!")
-        
-        return "Current project context: " + ", ".join(context_parts) if context_parts else ""
+        return "CTX: " + ", ".join(context_parts) if context_parts else ""
     
     def update_context(self, key: str, value: Any):
         """Update project context"""
