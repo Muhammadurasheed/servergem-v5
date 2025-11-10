@@ -254,11 +254,51 @@ class GCloudService:
             )
             build.timeout = {'seconds': 900}
             
-            # Encode source as inline bytes
-            build.source.storage_source = cloudbuild_v1.StorageSource(
-                bucket=f'{self.project_id}_cloudbuild',
-                object_='source.tar.gz'
-            )
+            # CRITICAL FIX: Upload source to GCS bucket first
+            # Create/ensure bucket exists
+            bucket_name = f'{self.project_id}_cloudbuild'
+            
+            try:
+                from google.cloud import storage
+                storage_client = storage.Client(project=self.project_id)
+                
+                # Get or create bucket
+                try:
+                    bucket = storage_client.get_bucket(bucket_name)
+                    self.logger.info(f"✅ Using existing bucket: {bucket_name}")
+                except Exception:
+                    # Create bucket if it doesn't exist
+                    self.logger.info(f"Creating Cloud Build bucket: {bucket_name}")
+                    bucket = storage_client.create_bucket(
+                        bucket_name, 
+                        location=self.region
+                    )
+                    self.logger.info(f"✅ Created bucket: {bucket_name}")
+                
+                # Upload source tarball
+                blob_name = f'source-{int(time.time())}.tar.gz'
+                blob = bucket.blob(blob_name)
+                
+                self.logger.info(f"📤 Uploading source to gs://{bucket_name}/{blob_name}...")
+                await asyncio.to_thread(
+                    blob.upload_from_string,
+                    source_bytes,
+                    content_type='application/gzip'
+                )
+                self.logger.info(f"✅ Source uploaded successfully")
+                
+                # Reference the uploaded source
+                build.source.storage_source = cloudbuild_v1.StorageSource(
+                    bucket=bucket_name,
+                    object_=blob_name
+                )
+                
+            except Exception as upload_error:
+                self.logger.error(f"Failed to upload source: {upload_error}")
+                return {
+                    'success': False,
+                    'error': f'Failed to upload source to Cloud Storage: {str(upload_error)}'
+                }
             
             if progress_callback:
                 await progress_callback({

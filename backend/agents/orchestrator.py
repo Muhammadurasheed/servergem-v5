@@ -319,18 +319,60 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
         # ✅ FIX 1: Store these BEFORE any async operations
         self.session_id = session_id
         self.safe_send = safe_send
+        
+        # ✅ CRITICAL FIX: Block deployment if waiting for env vars
+        if self.project_context.get('waiting_for_env_vars', False):
+            # Check if user is trying to deploy
+            deploy_keywords = ['deploy', 'start deployment', 'deploy to cloud', 'begin deployment']
+            is_deploy_attempt = any(keyword in user_message.lower() for keyword in deploy_keywords)
+            
+            if is_deploy_attempt and 'skip' not in user_message.lower():
+                return {
+                    'type': 'error',
+                    'content': '⚠️ **Environment Variables Required**\n\nYour application requires environment variables. Please provide them first using the "Provide Environment Variables" button, or type "skip env vars" to proceed without them.\n\n**Detected variables:**\n' + 
+                              '\n'.join(f'• `{var}`' for var in self.project_context.get('detected_env_vars', [])[:10]),
+                    'timestamp': datetime.now().isoformat()
+                }
+        
+        # Handle skip env vars command
+        if 'skip' in user_message.lower() and 'env' in user_message.lower():
+            self.project_context['waiting_for_env_vars'] = False
+            return {
+                'type': 'message',
+                'content': '✅ Skipping environment variables. You can proceed with deployment now.\n\n**Note:** Your app may not function correctly without the required environment variables.',
+                'actions': [
+                    {
+                        'id': 'deploy',
+                        'label': '🚀 Deploy to Cloud Run',
+                        'type': 'button',
+                        'primary': True,
+                        'action': 'deploy'
+                    }
+                ],
+                'timestamp': datetime.now().isoformat()
+            }
     
         # Initialize chat session if needed
         if not self.chat_session:
             self.chat_session = self.model.start_chat(history=[])
         
         # Add project context to enhance Gemini's understanding
-        context_prefix = self._build_context_prefix()
-        enhanced_message = (
-            f"{context_prefix}\n\nUser: {user_message}" 
-            if context_prefix 
-            else user_message
-        )
+        # ✅ QUOTA OPTIMIZATION: Only add context for complex messages
+        # Simple messages like "deploy", "yes", "no" don't need full context
+        simple_keywords = ['deploy', 'yes', 'no', 'skip', 'proceed', 'continue', 'ok', 'okay']
+        is_simple_command = any(user_message.lower().strip() == keyword for keyword in simple_keywords)
+        
+        if is_simple_command and self.project_context.get('project_path'):
+            # For simple commands when we already have context, send minimal info
+            enhanced_message = f"Project: {self.project_context.get('framework', 'app')} ready. User: {user_message}"
+        else:
+            # For complex queries, include full context
+            context_prefix = self._build_context_prefix()
+            enhanced_message = (
+                f"{context_prefix}\n\nUser: {user_message}" 
+                if context_prefix 
+                else user_message
+            )
         
         try:
             # Send to Gemini with function calling enabled - with retry logic
@@ -589,24 +631,53 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
                 repo_url
             )
             
-            # CHECK IF ENV VARS ARE NEEDED
+            # CHECK IF ENV VARS ARE NEEDED - CRITICAL FIX
             env_vars_detected = analysis_result['analysis'].get('env_vars', [])
             needs_env_vars = len(env_vars_detected) > 0
             
+            # Mark that we're waiting for env vars
+            self.project_context['waiting_for_env_vars'] = needs_env_vars
+            
             if needs_env_vars:
                 content += f"\n\n⚙️ **Environment Variables Detected:** {len(env_vars_detected)}\n"
-                content += "\nYour application requires environment variables. Please provide them to continue with deployment."
+                content += "\n**Required variables:**\n"
+                for var in env_vars_detected[:5]:  # Show first 5
+                    content += f"• `{var}`\n"
+                if len(env_vars_detected) > 5:
+                    content += f"• ... and {len(env_vars_detected) - 5} more\n"
                 
-                # ✅ FIX 5: Return with proper structure for env vars UI
+                content += "\n⚠️ **Please provide environment variables before deployment.**"
+                
+                # Store detected vars for later validation
+                self.project_context['detected_env_vars'] = env_vars_detected
+                
+                # Return with action buttons that require env vars first
                 return {
                     'type': 'analysis',
                     'content': content,
                     'data': analysis_result,
-                    'request_env_vars': True,  # Frontend will show UI
+                    'request_env_vars': True,
                     'detected_env_vars': env_vars_detected,
+                    'actions': [
+                        {
+                            'id': 'provide_env_vars',
+                            'label': '⚙️ Provide Environment Variables',
+                            'type': 'button',
+                            'primary': True,
+                            'action': 'provide_env_vars'
+                        },
+                        {
+                            'id': 'skip_env_vars',
+                            'label': '⏭️ Skip (Deploy without env vars)',
+                            'type': 'button',
+                            'action': 'skip_env_vars'
+                        }
+                    ],
                     'timestamp': datetime.now().isoformat()
                 }
             else:
+                # No env vars needed, can deploy directly
+                self.project_context['waiting_for_env_vars'] = False
                 return {
                     'type': 'analysis',
                     'content': content,
@@ -616,6 +687,7 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
                             'id': 'deploy',
                             'label': '🚀 Deploy to Cloud Run',
                             'type': 'button',
+                            'primary': True,
                             'action': 'deploy'
                         },
                         {
