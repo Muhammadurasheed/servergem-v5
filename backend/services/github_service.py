@@ -88,18 +88,22 @@ class GitHubService:
         except Exception as e:
             raise Exception(f'Failed to list repositories: {str(e)}')
     
-    def clone_repository(self, repo_url: str, branch: str = 'main') -> Dict:
+    async def clone_repository(self, repo_url: str, branch: str = 'main', progress_callback=None) -> Dict:
         """
-        Clone a GitHub repository
+        Clone a GitHub repository with real-time progress updates
         
         Args:
             repo_url: GitHub repo URL (https or git)
             branch: Branch name to clone (default: main)
+            progress_callback: Optional async callback for progress updates
             
         Returns:
             Dict with clone status and local path
         """
         try:
+            # ✅ PHASE 2: Real-time progress - Start
+            if progress_callback:
+                await progress_callback(f"🚀 Starting repository clone: {repo_url}")
             # Extract repo name from URL
             repo_name = repo_url.rstrip('/').split('/')[-1].replace('.git', '')
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -115,7 +119,10 @@ class GitHubService:
                 if 'github.com' in repo_url:
                     repo_url = repo_url.replace('https://', f'https://{self.token}@')
             
-            # Clone the repository with optimizations
+            # ✅ PHASE 2: Real-time progress - Cloning
+            if progress_callback:
+                await progress_callback(f"📥 Cloning repository to {local_path.name}...")
+            
             print(f"[GitHubService] 🚀 Fast cloning {repo_url}...")
             
             # Use optimized git clone flags for maximum speed
@@ -155,6 +162,10 @@ class GitHubService:
             # Get repo info
             files_count = len(list(local_path.rglob('*')))
             size_mb = sum(f.stat().st_size for f in local_path.rglob('*') if f.is_file()) / (1024 * 1024)
+            
+            # ✅ PHASE 2: Real-time progress - Complete
+            if progress_callback:
+                await progress_callback(f"✅ Clone complete: {files_count} files ({size_mb:.1f} MB)")
             
             return {
                 'success': True,

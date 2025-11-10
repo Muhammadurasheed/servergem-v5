@@ -34,9 +34,12 @@ class DockerService:
         except Exception as e:
             return {'installed': False, 'error': f'Docker check failed: {str(e)}'}
     
-    def save_dockerfile(self, dockerfile_content: str, project_path: str) -> Dict:
-        """Save Dockerfile to project directory"""
+    async def save_dockerfile(self, dockerfile_content: str, project_path: str, progress_callback=None) -> Dict:
+        """Save Dockerfile to project directory with progress updates"""
         try:
+            # ✅ PHASE 2: Real-time progress
+            if progress_callback:
+                await progress_callback("💾 Saving Dockerfile to project...")
             dockerfile_path = Path(project_path) / 'Dockerfile'
             
             # Backup existing Dockerfile if present
@@ -49,6 +52,10 @@ class DockerService:
             dockerfile_path.write_text(dockerfile_content)
             
             print(f"[DockerService] Dockerfile saved to {dockerfile_path}")
+            
+            # ✅ PHASE 2: Real-time progress - Complete
+            if progress_callback:
+                await progress_callback(f"✅ Dockerfile saved: {dockerfile_path.name}")
             
             return {
                 'success': True,

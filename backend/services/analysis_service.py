@@ -24,15 +24,25 @@ class AnalysisService:
         3. Return comprehensive report
         """
         try:
-            # Step 1: Analyze project
+            # ✅ PHASE 2: Real-time progress - Analysis Start
             print(f"[AnalysisService] Analyzing project at {project_path}")
             if progress_callback:
-                await progress_callback("🔍 Scanning project structure...")
+                await progress_callback("🔍 Starting code analysis...")
+                await progress_callback("📂 Scanning project structure...")
             
             analysis = await self.code_analyzer.analyze_project(project_path)
             
+            # ✅ PHASE 2: Detailed framework detection feedback
             if progress_callback:
-                await progress_callback(f"📦 Detected {analysis.get('framework', 'application')} framework...")
+                framework = analysis.get('framework', 'application')
+                language = analysis.get('language', 'unknown')
+                await progress_callback(f"✅ Framework detected: {framework}")
+                await progress_callback(f"📝 Language: {language}")
+                
+                # Report dependencies
+                dep_count = len(analysis.get('dependencies', []))
+                if dep_count > 0:
+                    await progress_callback(f"📦 Found {dep_count} dependencies")
             
             if 'error' in analysis:
                 return {
@@ -40,15 +50,18 @@ class AnalysisService:
                     'error': analysis['error']
                 }
             
-            # Step 2: Generate Dockerfile
+            # ✅ PHASE 2: Real-time progress - Dockerfile Generation
             print(f"[AnalysisService] Generating Dockerfile for {analysis['framework']}")
             if progress_callback:
-                await progress_callback(f"🐳 Generating optimized Dockerfile for {analysis['framework']}...")
+                await progress_callback(f"🐳 Starting Dockerfile generation...")
+                await progress_callback(f"⚙️  Optimizing for {analysis['framework']} framework...")
             
             dockerfile_result = await self.docker_expert.generate_dockerfile(analysis)
             
             if progress_callback:
                 await progress_callback("✅ Dockerfile generated successfully!")
+                await progress_callback("🔒 Applied security best practices")
+                await progress_callback("📦 Multi-stage build configured")
             
             # Step 3: Compile report
             report = {

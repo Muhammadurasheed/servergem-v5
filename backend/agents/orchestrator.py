@@ -438,10 +438,27 @@ Env vars auto-parsed from .env. Never clone twice.
                     "📦 Cloning repository from GitHub..."
                 )
             
-            # ✅ FIX 3: Send progress even without progress_notifier
+            # ✅ PHASE 2: Real-time progress callback for clone
+            async def clone_progress(message: str):
+                """Send real-time clone progress updates"""
+                try:
+                    if progress_notifier:
+                        await progress_notifier.send_update(
+                            DeploymentStages.REPO_CLONE,
+                            "in-progress",
+                            message
+                        )
+                    await self._send_progress_message(message)
+                except Exception as e:
+                    print(f"[Orchestrator] Clone progress error: {e}")
+            
             await self._send_progress_message("📦 Cloning repository from GitHub...")
             
-            clone_result = self.github_service.clone_repository(repo_url, branch)
+            clone_result = await self.github_service.clone_repository(
+                repo_url, 
+                branch,
+                progress_callback=clone_progress  # ✅ PHASE 2: Pass callback
+            )
             
             if not clone_result.get('success'):
                 if progress_notifier:
@@ -558,9 +575,24 @@ Env vars auto-parsed from .env. Never clone twice.
             
             await self._send_progress_message("🐳 Generating optimized Dockerfile...")
             
-            dockerfile_save = self.docker_service.save_dockerfile(
+            # ✅ PHASE 2: Real-time progress for Dockerfile save
+            async def dockerfile_progress(message: str):
+                """Send real-time Dockerfile save updates"""
+                try:
+                    if progress_notifier:
+                        await progress_notifier.send_update(
+                            DeploymentStages.DOCKERFILE_GEN,
+                            "in-progress",
+                            message
+                        )
+                    await self._send_progress_message(message)
+                except Exception as e:
+                    print(f"[Orchestrator] Dockerfile progress error: {e}")
+            
+            dockerfile_save = await self.docker_service.save_dockerfile(
                 analysis_result['dockerfile']['content'],
-                project_path
+                project_path,
+                progress_callback=dockerfile_progress  # ✅ PHASE 2: Pass callback
             )
             
             if progress_notifier:
