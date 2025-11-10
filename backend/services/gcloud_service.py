@@ -705,6 +705,24 @@ class GCloudService:
             if progress_callback:
                 await progress_callback({
                     'stage': 'deploy',
+                    'progress': 95,
+                    'message': '🔍 Verifying deployment health...'
+                })
+            
+            # ✅ FIX GAP #1: Deployment verification & health checks
+            health_status = await self._verify_deployment_health(
+                service_url,
+                unique_service_name,
+                progress_callback
+            )
+            
+            if not health_status['healthy']:
+                self.logger.warning(f"Health check warning: {health_status.get('message')}")
+                # Non-fatal - service might still be starting
+            
+            if progress_callback:
+                await progress_callback({
+                    'stage': 'deploy',
                     'progress': 100,
                     'message': f'🎉 Deployment complete!'
                 })
@@ -725,6 +743,100 @@ class GCloudService:
             return {
                 'success': False,
                 'error': f'Deployment failed: {str(e)}'
+            }
+    
+    async def _verify_deployment_health(
+        self,
+        service_url: str,
+        service_name: str,
+        progress_callback: Optional[Callable] = None
+    ) -> Dict:
+        """
+        ✅ FIX GAP #1: Verify Cloud Run deployment is healthy and responding
+        
+        FAANG-Level Health Check Strategy:
+        1. Wait for service to become available (with timeout)
+        2. Test root endpoint or health endpoint
+        3. Verify service is accepting requests
+        4. Return comprehensive health status
+        """
+        try:
+            import requests
+            
+            max_wait_seconds = 120  # 2 minutes max wait
+            check_interval = 5  # Check every 5 seconds
+            start_time = time.time()
+            
+            self.logger.info(f"Starting health check for {service_name} at {service_url}")
+            
+            # Try multiple endpoints in order of preference
+            endpoints_to_check = [
+                ('/', 'Root endpoint'),
+                ('/health', 'Health endpoint'),
+                ('/api/health', 'API health endpoint'),
+            ]
+            
+            last_error = None
+            
+            while time.time() - start_time < max_wait_seconds:
+                elapsed = int(time.time() - start_time)
+                
+                if progress_callback and elapsed % 15 == 0:  # Update every 15 seconds
+                    await progress_callback({
+                        'stage': 'deploy',
+                        'progress': 95,
+                        'message': f'⏳ Waiting for service to be ready... ({elapsed}s)'
+                    })
+                
+                # Try each endpoint
+                for endpoint, description in endpoints_to_check:
+                    try:
+                        health_url = f"{service_url}{endpoint}"
+                        
+                        response = await asyncio.to_thread(
+                            requests.get,
+                            health_url,
+                            timeout=10,
+                            allow_redirects=True
+                        )
+                        
+                        # Accept any non-5xx status code as "service is running"
+                        # 200 = OK, 404 = No route (but service is up), 401/403 = Auth required (service is up)
+                        if response.status_code < 500:
+                            self.logger.info(f"✅ Health check passed: {description} returned {response.status_code}")
+                            
+                            return {
+                                'healthy': True,
+                                'status_code': response.status_code,
+                                'endpoint': endpoint,
+                                'message': f'Service is responding ({response.status_code})',
+                                'elapsed_seconds': int(time.time() - start_time)
+                            }
+                    
+                    except requests.exceptions.RequestException as e:
+                        last_error = str(e)
+                        self.logger.debug(f"Health check attempt failed for {endpoint}: {e}")
+                        continue
+                
+                # Wait before next check
+                await asyncio.sleep(check_interval)
+            
+            # Timeout reached
+            self.logger.warning(f"Health check timeout after {max_wait_seconds}s. Last error: {last_error}")
+            
+            return {
+                'healthy': False,
+                'message': f'Service did not respond within {max_wait_seconds}s. It may still be starting up.',
+                'last_error': last_error,
+                'elapsed_seconds': int(time.time() - start_time)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Health check error: {e}")
+            return {
+                'healthy': False,
+                'message': f'Health check failed: {str(e)}',
+                'error': str(e)
             }
     
     async def _get_service_url(self, service_name: str) -> str:

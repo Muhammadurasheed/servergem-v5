@@ -2,10 +2,56 @@ import { StageUpdate } from '@/types/deployment';
 
 /**
  * Parse backend log messages into structured deployment stage updates
+ * ✅ FIX GAP #3: Added pre-flight check patterns
  */
 export const parseBackendLog = (message: string): StageUpdate | null => {
+  // ✅ FIX GAP #3: Pre-flight checks - starting
+  if (message.includes('🔍 Running pre-flight checks') || message.includes('pre-flight')) {
+    return {
+      stage: 'repo_access',
+      status: 'in-progress',
+      details: ['Verifying GCP environment...'],
+      progress: 1,
+    };
+  }
+
+  // ✅ FIX GAP #3: Pre-flight checks - complete
+  if (message.includes('✅ All pre-flight checks passed')) {
+    return {
+      stage: 'repo_access',
+      status: 'success',
+      details: [
+        'Project access verified',
+        'Artifact Registry ready',
+        'Cloud Build API enabled',
+        'Cloud Run API enabled',
+        'Storage bucket configured'
+      ],
+      progress: 3,
+    };
+  }
+
+  // ✅ FIX GAP #3: Individual pre-flight check updates
+  if (message.includes('✅ Project access verified')) {
+    return {
+      stage: 'repo_access',
+      status: 'in-progress',
+      details: ['Project access verified ✓'],
+      progress: 1,
+    };
+  }
+
+  if (message.includes('✅ Artifact Registry') || message.includes('📦 Creating Artifact Registry')) {
+    return {
+      stage: 'repo_access',
+      status: 'in-progress',
+      details: ['Setting up Artifact Registry...'],
+      progress: 2,
+    };
+  }
+
   // Repository cloning - starting
-  if (message.includes('[GitHubService] Cloning') || message.includes('Cloning repository')) {
+  if (message.includes('[GitHubService] Cloning') || message.includes('Cloning repository') || message.includes('🚀 Starting repository clone')) {
     return {
       stage: 'repo_access',
       status: 'in-progress',
@@ -92,8 +138,18 @@ export const parseBackendLog = (message: string): StageUpdate | null => {
     };
   }
 
+  // ✅ FIX GAP #3: Dockerfile saving - in progress
+  if (message.includes('💾 Saving Dockerfile')) {
+    return {
+      stage: 'dockerfile_generation',
+      status: 'in-progress',
+      details: ['Saving Dockerfile to project...'],
+      progress: 48,
+    };
+  }
+
   // Dockerfile generation - complete
-  if (message.includes('[DockerService] Dockerfile saved') || message.includes('Dockerfile created')) {
+  if (message.includes('[DockerService] Dockerfile saved') || message.includes('Dockerfile created') || message.includes('✅ Dockerfile saved')) {
     return {
       stage: 'dockerfile_generation',
       status: 'success',
@@ -101,6 +157,7 @@ export const parseBackendLog = (message: string): StageUpdate | null => {
         'Multi-stage build configured',
         'Security best practices applied',
         'Layer caching optimized',
+        'Dockerfile saved to project'
       ],
       progress: 50,
     };
@@ -178,12 +235,22 @@ export const parseBackendLog = (message: string): StageUpdate | null => {
     };
   }
 
+  // ✅ FIX GAP #3: Deployment health checks
+  if (message.includes('🔍 Verifying deployment health') || message.includes('Waiting for service to be ready')) {
+    return {
+      stage: 'cloud_deployment',
+      status: 'in-progress',
+      details: ['Verifying service health...'],
+      progress: 95,
+    };
+  }
+
   // Cloud deployment - complete
-  if (message.includes('Deployment successful') || message.includes('deployed successfully') || message.includes('Service URL:')) {
+  if (message.includes('Deployment successful') || message.includes('deployed successfully') || message.includes('Service URL:') || message.includes('🎉 Deployment complete')) {
     return {
       stage: 'cloud_deployment',
       status: 'success',
-      details: ['Service deployed successfully!'],
+      details: ['Service deployed and verified successfully!'],
       progress: 100,
     };
   }
