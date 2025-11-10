@@ -113,7 +113,13 @@ export const useChat = (): UseChatReturn => {
         
       case 'typing':
         console.log('[useChat] Setting typing to true');
+        // ✅ FIX: Don't show typing indicator for too long - will be cleared by first progress message
         setIsTyping(true);
+        
+        // Auto-clear typing after 3 seconds if no message arrives (prevents stuck bouncing dots)
+        setTimeout(() => {
+          setIsTyping(false);
+        }, 3000);
         break;
       
       case 'deployment_started':
@@ -131,7 +137,8 @@ export const useChat = (): UseChatReturn => {
       
       case 'deployment_progress':
         console.log('[useChat] 📊 Deployment progress:', (serverMessage as any).stage, (serverMessage as any).status);
-        setIsTyping(true);
+        // ✅ FIX: Clear typing indicator immediately when progress updates start arriving
+        setIsTyping(false);
         
         // Add beautifully formatted progress update
         const progressMsg = serverMessage as any;

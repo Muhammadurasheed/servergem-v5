@@ -895,11 +895,16 @@ Env vars auto-parsed from .env. Never clone twice.
                     'data': {'content': '🔍 Running pre-flight checks...'}
                 })
             
+            # ✅ CRITICAL FIX: Make lambda async to prevent NoneType await error
+            async def preflight_progress_wrapper(msg: str):
+                if progress_callback:
+                    await progress_callback({
+                        'type': 'message',
+                        'data': {'content': msg}
+                    })
+            
             preflight_result = await self.gcloud_service.preflight_checks(
-                progress_callback=lambda msg: progress_callback({
-                    'type': 'message',
-                    'data': {'content': msg}
-                }) if progress_callback else None
+                progress_callback=preflight_progress_wrapper
             )
             
             if not preflight_result['success']:
