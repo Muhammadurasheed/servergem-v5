@@ -316,41 +316,9 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
         CRITICAL FIX: Store safe_send IMMEDIATELY before any async operations
         """
         
-        # ✅ FIX 1: Store these BEFORE any async operations
+        # ✅ Store session info BEFORE any async operations
         self.session_id = session_id
         self.safe_send = safe_send
-        
-        # ✅ CRITICAL FIX: Block deployment if waiting for env vars
-        if self.project_context.get('waiting_for_env_vars', False):
-            # Check if user is trying to deploy
-            deploy_keywords = ['deploy', 'start deployment', 'deploy to cloud', 'begin deployment']
-            is_deploy_attempt = any(keyword in user_message.lower() for keyword in deploy_keywords)
-            
-            if is_deploy_attempt and 'skip' not in user_message.lower():
-                return {
-                    'type': 'error',
-                    'content': '⚠️ **Environment Variables Required**\n\nYour application requires environment variables. Please provide them first using the "Provide Environment Variables" button, or type "skip env vars" to proceed without them.\n\n**Detected variables:**\n' + 
-                              '\n'.join(f'• `{var}`' for var in self.project_context.get('detected_env_vars', [])[:10]),
-                    'timestamp': datetime.now().isoformat()
-                }
-        
-        # Handle skip env vars command
-        if 'skip' in user_message.lower() and 'env' in user_message.lower():
-            self.project_context['waiting_for_env_vars'] = False
-            return {
-                'type': 'message',
-                'content': '✅ Skipping environment variables. You can proceed with deployment now.\n\n**Note:** Your app may not function correctly without the required environment variables.',
-                'actions': [
-                    {
-                        'id': 'deploy',
-                        'label': '🚀 Deploy to Cloud Run',
-                        'type': 'button',
-                        'primary': True,
-                        'action': 'deploy'
-                    }
-                ],
-                'timestamp': datetime.now().isoformat()
-            }
     
         # Initialize chat session if needed
         if not self.chat_session:
@@ -631,74 +599,24 @@ Be concise, helpful, and NEVER mention gcloud setup or GCP authentication.
                 repo_url
             )
             
-            # CHECK IF ENV VARS ARE NEEDED - CRITICAL FIX
+            # ✅ ALWAYS offer env vars collection (user decides if needed)
             env_vars_detected = analysis_result['analysis'].get('env_vars', [])
-            needs_env_vars = len(env_vars_detected) > 0
             
-            # Mark that we're waiting for env vars
-            self.project_context['waiting_for_env_vars'] = needs_env_vars
-            
-            if needs_env_vars:
+            if env_vars_detected and len(env_vars_detected) > 0:
                 content += f"\n\n⚙️ **Environment Variables Detected:** {len(env_vars_detected)}\n"
-                content += "\n**Required variables:**\n"
-                for var in env_vars_detected[:5]:  # Show first 5
-                    content += f"• `{var}`\n"
-                if len(env_vars_detected) > 5:
-                    content += f"• ... and {len(env_vars_detected) - 5} more\n"
-                
-                content += "\n⚠️ **Please provide environment variables before deployment.**"
-                
-                # Store detected vars for later validation
-                self.project_context['detected_env_vars'] = env_vars_detected
-                
-                # Return with action buttons that require env vars first
-                return {
-                    'type': 'analysis',
-                    'content': content,
-                    'data': analysis_result,
-                    'request_env_vars': True,
-                    'detected_env_vars': env_vars_detected,
-                    'actions': [
-                        {
-                            'id': 'provide_env_vars',
-                            'label': '⚙️ Provide Environment Variables',
-                            'type': 'button',
-                            'primary': True,
-                            'action': 'provide_env_vars'
-                        },
-                        {
-                            'id': 'skip_env_vars',
-                            'label': '⏭️ Skip (Deploy without env vars)',
-                            'type': 'button',
-                            'action': 'skip_env_vars'
-                        }
-                    ],
-                    'timestamp': datetime.now().isoformat()
-                }
-            else:
-                # No env vars needed, can deploy directly
-                self.project_context['waiting_for_env_vars'] = False
-                return {
-                    'type': 'analysis',
-                    'content': content,
-                    'data': analysis_result,
-                    'actions': [
-                        {
-                            'id': 'deploy',
-                            'label': '🚀 Deploy to Cloud Run',
-                            'type': 'button',
-                            'primary': True,
-                            'action': 'deploy'
-                        },
-                        {
-                            'id': 'view_dockerfile',
-                            'label': '📄 View Dockerfile',
-                            'type': 'button',
-                            'action': 'view_dockerfile'
-                        }
-                    ],
-                    'timestamp': datetime.now().isoformat()
-                }
+                content += "Variables like: " + ", ".join([f"`{v}`" for v in env_vars_detected[:3]])
+                if len(env_vars_detected) > 3:
+                    content += f" and {len(env_vars_detected) - 3} more"
+            
+            # ALWAYS return with env vars prompt - user can skip if not needed
+            return {
+                'type': 'analysis',
+                'content': content,
+                'data': analysis_result,
+                'request_env_vars': True,  # Frontend shows env var collection UI
+                'detected_env_vars': env_vars_detected,
+                'timestamp': datetime.now().isoformat()
+            }
             
         except Exception as e:
             print(f"[Orchestrator] Clone and analyze error: {str(e)}")

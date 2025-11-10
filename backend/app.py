@@ -372,10 +372,7 @@ async def websocket_endpoint(websocket: WebSocket, api_key: Optional[str] = Quer
                     }
                 
                 user_orchestrator.project_context['env_vars'] = session_env_vars
-                
-                # ✅ CRITICAL FIX: Clear waiting flag so deployment can proceed
-                user_orchestrator.project_context['waiting_for_env_vars'] = False
-                print(f"[WebSocket] ✅ Env vars stored, cleared waiting flag")
+                print(f"[WebSocket] ✅ Env vars stored: {count} variables")
                 
                 # Format list
                 env_list = '\n'.join([
