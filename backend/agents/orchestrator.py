@@ -47,8 +47,15 @@ class OrchestratorAgent:
         gemini_api_key: Optional[str] = None
     ):
         self.gemini_api_key = gemini_api_key
-        self.use_vertex_ai = not gemini_api_key  # Default to Vertex AI if no key provided
+        # ✅ ALWAYS prefer Vertex AI if GCP project is configured
+        # Store Gemini API key for automatic fallback on quota exhaustion
+        self.use_vertex_ai = bool(gcloud_project)
         self.gcloud_project = gcloud_project
+        
+        print(f"[Orchestrator] Initialization:")
+        print(f"  - Vertex AI: {self.use_vertex_ai} (project: {gcloud_project})")
+        print(f"  - Gemini API key available: {bool(gemini_api_key)}")
+        print(f"  - Fallback ready: {self.use_vertex_ai and bool(gemini_api_key)}")
         
         if self.use_vertex_ai:
             if not gcloud_project:
@@ -272,10 +279,16 @@ Env vars auto-parsed from .env. Never clone twice.
                 'resource exhausted', '429', 'quota', 'rate limit'
             ])
             
-            if is_quota_error and self.use_vertex_ai and self.gemini_api_key:
-                # Switch to Gemini API fallback
-                print(f"[Orchestrator] ⚠️ Vertex AI quota exhausted, falling back to Gemini API")
-                await self._send_progress_message("⚠️ Switching to backup AI service...")
+            if is_quota_error:
+                print(f"[Orchestrator] ⚠️ Quota error detected: {error_str}")
+                print(f"[Orchestrator] Fallback conditions:")
+                print(f"  - Using Vertex AI: {self.use_vertex_ai}")
+                print(f"  - Gemini API key available: {bool(self.gemini_api_key)}")
+                
+                if self.use_vertex_ai and self.gemini_api_key:
+                    # Switch to Gemini API fallback
+                    print(f"[Orchestrator] ✅ Activating fallback to Gemini API")
+                    await self._send_progress_message("⚠️ Vertex AI quota exhausted. Switching to backup AI service...")
                 
                 try:
                     import google.generativeai as genai
@@ -302,9 +315,13 @@ Env vars auto-parsed from .env. Never clone twice.
                     
                 except Exception as fallback_err:
                     print(f"[Orchestrator] ❌ Fallback to Gemini API failed: {fallback_err}")
-                    raise Exception(f"Both Vertex AI and Gemini API failed. Add API key in Settings.")
+                    raise Exception(f"Both Vertex AI and Gemini API failed. Gemini API error: {str(fallback_err)}")
+                
+                elif not self.gemini_api_key:
+                    print(f"[Orchestrator] ❌ No Gemini API key available for fallback")
+                    raise Exception(f"Vertex AI quota exhausted. Please add a Gemini API key in Settings to continue.")
             
-            # Re-raise if not quota error or no fallback available
+            # Re-raise if not quota error
             raise
 
     async def process_message(
